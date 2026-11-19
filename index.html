@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>避難所確認アプリ</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+    }
+    #map {
+      width: 100%;
+      height: 100vh;
+    }
+    #error-message {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #e53935;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 4px;
+      font-family: sans-serif;
+      font-size: 14px;
+      z-index: 1000;
+      display: none;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+      .precipitation-container { font-family: sans-serif; }
+      .precip-value { font-weight: bold; }
+      .precip-0 { color: #333; }
+      .precip-low { color: #1565c0; }
+      .precip-mid { color: #f9a825; }
+      .precip-high { color: #ef6c00; }
+      .precip-extreme { color: #c62828; }
+    </style>
+  </head>
+  <body>
+    <div id="error-message"></div>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      // Leaflet 地図を初期化（浜松市中心）
+      const map = L.map('map').setView([34.78, 137.75], 11);
+
+      // 国土地理院（GSI）タイルを追加
+      L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>'
+      }).addTo(map);
+
+    function showError(msg) {
+      const el = document.getElementById('error-message');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    async function loadShelters() {
+      try {
+        const response = await fetch('data/hamamatsu/shelters_hamamatsu.csv');
+        if (!response.ok) {
+          throw new Error('データの取得中にエラーが発生しました');
+        }
+        const text = await response.text();
+        const lines = text.split('\n').filter(line => line.trim() !== '');
+        if (lines.length < 2) {
+          throw new Error('避難所データが見つかりませんでした');
+        }
+
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(',');
+          if (cols.length < 23) continue;
+
+          const name = cols[7].trim();
+          const address = cols[8].trim();
+          const lat = parseFloat(cols[21].trim());
+          const lng = parseFloat(cols[22].trim());
+
+          if (isNaN(lat) || isNaN(lng)) continue;
+
+          const phoneRaw = cols[9] ? cols[9].trim() : '';
+          const phone = (phoneRaw && phoneRaw !== '-') ? phoneRaw : '';
+
+          let infoHtml = '';
+          if (address) {
+            infoHtml += `<div style="margin-bottom:4px;color:#333;">${address}</div>`;
+          }
+          if (phone) {
+            infoHtml += `<div style="margin-bottom:8px;color:#555;font-size:13px;">📞 ${phone}</div>`;
+          }
+
+          const popupContent = `
+            <div style="font-family: sans-serif; line-height: 1.5; min-width: 200px;">
+              <div style="font-size:15px;font-weight:bold;color:#1a237e;margin-bottom:6px;">${name}</div>
+              ${infoHtml}
+              <a href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}" target="_blank" rel="noopener noreferrer">Googleマップで開く</a>
+            </div>
+          `;
+
+          L.marker([lat, lng]).addTo(map).bindPopup(popupContent);
+        }
+      } catch (err) {
+        console.error(err);
+        showError('避難所データの読み込みに失敗しました。');
+      }
+    }
+
+    async function loadRainData() {
+      try {
+        const response = await fetch('data/hamamatsu/rain_hamamatsu.csv');
+        if (!response.ok) {
+          throw new Error('雨量データの取得中にエラーが発生しました');
+        }
+        const text = await response.text();
+        const lines = text.split('\n').filter(line => line.trim() !== '');
+        if (lines.length < 2) {
+          throw new Error('雨量データが見つかりませんでした');
+        }
+
+        // CSSクラス名と対応する色
+        const classThresholds = [
+          { max: 0, cls: 'precip-0', color: '#81d4fa' },       // 0 mm
+          { max: 10, cls: 'precip-low', color: '#42a5f5' },    // 弱雨
+          { max: 30, cls: 'precip-mid', color: '#fdd835' },    // 中雨
+          { max: 50, cls: 'precip-high', color: '#fb8c00' },   // 強雨
+          { max: Infinity, cls: 'precip-extreme', color: '#e53935' } // 非常に強い雨
+        ];
+
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(',');
+          if (cols.length < 7) continue;
+
+          const name = cols[1].trim();
+          const lat = parseFloat(cols[2].trim());
+          const lng = parseFloat(cols[3].trim());
+          const precip10mRaw = cols[5].trim();
+          const precip60mRaw = cols[6].trim();
+
+          if (isNaN(lat) || isNaN(lng)) continue;
+
+          const precip10m = precip10mRaw === '' ? null : parseFloat(precip10mRaw);
+          const precip60m = precip60mRaw === '' ? null : parseFloat(precip60mRaw);
+
+          // 欠損値の場合は灰色で表示
+          let color = '#9e9e9e';
+          let radius = 10;
+          let cls = '';
+
+          if (precip10m !== null) {
+            const t = classThresholds.find(t => precip10m <= t.max) || classThresholds[classThresholds.length - 1];
+            color = t.color;
+            cls = t.cls;
+            if (precip10m === 0) {
+              radius = 10;
+            } else if (precip10m < 10) {
+              radius = 16;
+            } else if (precip10m < 30) {
+              radius = 20;
+            } else if (precip10m < 50) {
+              radius = 24;
+            } else {
+              radius = 28;
+            }
+          }
+
+          const valueText10 = precip10m !== null ? precip10m + ' mm' : 'データなし';
+          const valueText60 = precip60m !== null ? precip60m + ' mm' : 'データなし';
+
+          const popupContent = `
+            <div class="precipitation-container" style="font-family: sans-serif; line-height: 1.5; min-width: 170px;">
+              <div style="font-size:15px;font-weight:bold;color:#1a237e;margin-bottom:6px;">${name}</div>
+              <div style="margin-bottom:2px;">10分雨量: <span class="precip-value ${cls}">${valueText10}</span></div>
+              <div>60分雨量: <span class="precip-value ${cls}">${valueText60}</span></div>
+            </div>
+          `;
+
+          L.circleMarker([lat, lng], {
+            radius: radius,
+            color: '#ffffff',
+            fillColor: color,
+            fillOpacity: 0.85,
+            weight: 2
+          }).addTo(map).bindPopup(popupContent);
+        }
+      } catch (err) {
+        console.error(err);
+        showError('雨量データの読み込みに失敗しました。');
+      }
+    }
+
+    loadShelters();
+    loadRainData();
+  </script>
+</body>
+</html>
