@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>避難所確認アプリ</title>
+  <title>コドケン (KODOKEN) - 子育て住みやすさ診断マップ</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     html, body {
@@ -11,6 +11,7 @@
       padding: 0;
       width: 100%;
       height: 100%;
+      font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
     }
     #map {
       width: 100%;
@@ -25,176 +26,384 @@
       color: #fff;
       padding: 12px 20px;
       border-radius: 4px;
-      font-family: sans-serif;
       font-size: 14px;
       z-index: 1000;
       display: none;
       box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      max-width: 90%;
+      text-align: center;
     }
-      .precipitation-container { font-family: sans-serif; }
-      .precip-value { font-weight: bold; }
-      .precip-0 { color: #333; }
-      .precip-low { color: #1565c0; }
-      .precip-mid { color: #f9a825; }
-      .precip-high { color: #ef6c00; }
-      .precip-extreme { color: #c62828; }
-    </style>
-  </head>
-  <body>
-    <div id="error-message"></div>
-    <div id="map"></div>
+    .map-credit {
+      position: absolute;
+      bottom: 4px;
+      left: 4px;
+      background: rgba(255,255,255,0.85);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      color: #333;
+      z-index: 1000;
+      line-height: 1.4;
+    }
+    .map-credit a {
+      color: #1565c0;
+    }
+    .legend {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(255,255,255,0.92);
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #333;
+      z-index: 1000;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      line-height: 1.6;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .legend-item:last-child { margin-bottom: 0; }
+    .legend-icon {
+      width: 22px;
+      height: 22px;
+      margin-right: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .legend-title {
+      font-weight: bold;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: #1a237e;
+    }
+    .custom-div-icon {
+      background: transparent;
+      border: none;
+    }
+    .pin-wrapper {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .result-panel {
+      position: absolute;
+      z-index: 1000;
+      background: rgba(255,255,255,0.97);
+      transition: transform 0.3s ease;
+      overflow-y: auto;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    }
+    @media (min-width: 769px) {
+      .result-panel {
+        top: 10px;
+        right: 10px;
+        width: 340px;
+        max-height: calc(100vh - 20px);
+        border-radius: 8px;
+        transform: translateX(120%);
+      }
+      .result-panel.open { transform: translateX(0); }
+    }
+    @media (max-width: 768px) {
+      .result-panel {
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        max-height: 55vh;
+        border-radius: 12px 12px 0 0;
+        transform: translateY(110%);
+      }
+      .result-panel.open { transform: translateY(0); }
+      .result-panel .drawer-handle {
+        width: 36px;
+        height: 4px;
+        background: #ccc;
+        border-radius: 2px;
+        margin: 8px auto;
+      }
+    }
+    .panel-header {
+      padding: 16px 16px 0 16px;
+    }
+    .panel-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #1a237e;
+      margin-bottom: 8px;
+    }
+    .panel-counts {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .count-badge {
+      background: #e3f2fd;
+      color: #1565c0;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: bold;
+    }
+    .facility-list {
+      padding: 0 16px 16px 16px;
+    }
+    .facility-item {
+      display: flex;
+      align-items: flex-start;
+      padding: 10px 0;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+    .facility-item:last-child { border-bottom: none; }
+    .facility-item:hover { background: #f5f5f5; margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+    .facility-icon {
+      width: 24px;
+      height: 24px;
+      margin-right: 10px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .facility-info { flex: 1; }
+    .facility-name {
+      font-size: 14px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 2px;
+    }
+    .facility-meta {
+      font-size: 12px;
+      color: #888;
+    }
+    .panel-diagnosis {
+      margin: 0 16px 12px 16px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: bold;
+      line-height: 1.5;
+    }
+    .diagnosis-good { background: #c8e6c9; color: #2e7d32; }
+    .diagnosis-normal { background: #fff9c4; color: #f57f17; }
+    .diagnosis-poor { background: #ffcdd2; color: #c62828; }
+    .empty-msg {
+      text-align: center;
+      color: #888;
+      padding: 20px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="error-message"></div>
+  <div id="map"></div>
+  <div class="map-credit">
+    地図：<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a><br>
+    施設情報：浜松市オープンデータ等
+  </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script>
-      // Leaflet 地図を初期化（浜松市中心）
-      const map = L.map('map').setView([34.78, 137.75], 11);
+  <div class="legend">
+    <div class="legend-title">施設の凡例</div>
+    <div class="legend-item">
+      <div class="legend-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" fill="#1565c0"/><polygon points="12,2 2,10 22,10" fill="#1565c0"/><rect x="9" y="14" width="6" height="6" fill="#fff"/></svg>
+      </div>
+      <span>学校・保育園</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="10" r="5" fill="#2e7d32"/><rect x="11" y="14" width="2" height="8" fill="#5d4037"/></svg>
+      </div>
+      <span>公園</span>
+    </div>
+  </div>
 
-      // 国土地理院（GSI）タイルを追加
-      L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>'
-      }).addTo(map);
+  <div id="result-panel" class="result-panel">
+    <div class="drawer-handle"></div>
+    <div class="panel-header">
+      <div class="panel-title">このエリアの子育て環境</div>
+      <div class="panel-diagnosis" id="panel-diagnosis"></div>
+      <div class="panel-counts" id="panel-counts"></div>
+    </div>
+    <div class="facility-list" id="facility-list"></div>
+  </div>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
     function showError(msg) {
       const el = document.getElementById('error-message');
       el.textContent = msg;
       el.style.display = 'block';
     }
 
-    async function loadShelters() {
-      try {
-        const response = await fetch('data/hamamatsu/shelters_hamamatsu.csv');
-        if (!response.ok) {
-          throw new Error('データの取得中にエラーが発生しました');
-        }
-        const text = await response.text();
-        const lines = text.split('\n').filter(line => line.trim() !== '');
-        if (lines.length < 2) {
-          throw new Error('避難所データが見つかりませんでした');
-        }
+    const map = L.map('map').setView([34.7038, 137.7344], 14);
 
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(',');
-          if (cols.length < 23) continue;
+    L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>',
+      maxZoom: 18
+    }).addTo(map);
 
-          const name = cols[7].trim();
-          const address = cols[8].trim();
-          const lat = parseFloat(cols[21].trim());
-          const lng = parseFloat(cols[22].trim());
+    const schoolIcon = L.divIcon({
+      className: 'custom-div-icon',
+      html: '<div class="pin-wrapper"><svg width="26" height="26" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" fill="#1565c0" stroke="#fff" stroke-width="1"/><polygon points="12,2 2,10 22,10" fill="#1565c0" stroke="#fff" stroke-width="1"/><rect x="9" y="14" width="6" height="6" fill="#fff"/></svg></div>',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
 
-          if (isNaN(lat) || isNaN(lng)) continue;
+    const parkIcon = L.divIcon({
+      className: 'custom-div-icon',
+      html: '<div class="pin-wrapper"><svg width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="9" r="6" fill="#2e7d32" stroke="#fff" stroke-width="1"/><rect x="11" y="14" width="2" height="8" fill="#5d4037"/></svg></div>',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
 
-          const phoneRaw = cols[9] ? cols[9].trim() : '';
-          const phone = (phoneRaw && phoneRaw !== '-') ? phoneRaw : '';
+    const houseIcon = L.divIcon({
+      className: 'custom-div-icon',
+      html: '<div class="pin-wrapper"><svg width="30" height="30" viewBox="0 0 24 24"><path d="M12 2L2 12h3v8h6v-6h2v6h6v-8h3z" fill="#ff9800" stroke="#fff" stroke-width="1.5"/></svg></div>',
+      iconSize: [32, 32],
+      iconAnchor: [16, 30]
+    });
 
-          let infoHtml = '';
-          if (address) {
-            infoHtml += `<div style="margin-bottom:4px;color:#333;">${address}</div>`;
-          }
-          if (phone) {
-            infoHtml += `<div style="margin-bottom:8px;color:#555;font-size:13px;">📞 ${phone}</div>`;
-          }
+    let facilitiesData = [];
+    let clickMarker = null;
+    let clickCircle = null;
 
-          const popupContent = `
-            <div style="font-family: sans-serif; line-height: 1.5; min-width: 200px;">
-              <div style="font-size:15px;font-weight:bold;color:#1a237e;margin-bottom:6px;">${name}</div>
-              ${infoHtml}
-              <a href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}" target="_blank" rel="noopener noreferrer">Googleマップで開く</a>
+    function getDistance(lat1, lng1, lat2, lng2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLng/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function renderPanel(results) {
+      const panel = document.getElementById('result-panel');
+      const countsEl = document.getElementById('panel-counts');
+      const listEl = document.getElementById('facility-list');
+      const diagEl = document.getElementById('panel-diagnosis');
+
+      const parkCount = results.filter(r => r.type === 'park').length;
+      const schoolCount = results.filter(r => r.type === 'school').length;
+      const nurseryCount = results.filter(r => r.type === 'nursery').length;
+      const total = results.length;
+
+      countsEl.innerHTML = `
+        <span class="count-badge">公園 ${parkCount}件</span>
+        <span class="count-badge">学校 ${schoolCount}件</span>
+        <span class="count-badge">保育園 ${nurseryCount}件</span>
+      `;
+
+      // 診断コメント（各カテゴリ最低1件以上を前提とする）
+      const hasPark = parkCount > 0;
+      const hasSchool = schoolCount > 0;
+      const hasNursery = nurseryCount > 0;
+      const hasEach = hasPark && hasSchool && hasNursery;
+
+      let diagText = '';
+      let diagClass = '';
+      if (total >= 5 && hasEach) {
+        diagText = '子育て環境が充実したエリアです！';
+        diagClass = 'diagnosis-good';
+      } else if (total >= 2 && hasEach) {
+        diagText = '基本的な子育て環境があります';
+        diagClass = 'diagnosis-normal';
+      } else {
+        diagText = '周辺に施設が少ないようです。別のエリアも検討してみましょう';
+        diagClass = 'diagnosis-poor';
+      }
+      diagEl.textContent = diagText;
+      diagEl.className = 'panel-diagnosis ' + diagClass;
+
+      if (results.length === 0) {
+        listEl.innerHTML = '<div class="empty-msg">半径1km以内に施設が見つかりませんでした。</div>';
+      } else {
+        listEl.innerHTML = results.map(f => {
+          const iconSvg = (f.type === 'school' || f.type === 'nursery')
+            ? '<svg width="20" height="20" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" fill="#1565c0"/><polygon points="12,2 2,10 22,10" fill="#1565c0"/><rect x="9" y="14" width="6" height="6" fill="#fff"/></svg>'
+            : '<svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="10" r="5" fill="#2e7d32"/><rect x="11" y="14" width="2" height="8" fill="#5d4037"/></svg>';
+          const label = f.type === 'nursery' ? f.name + '（保育園・こども園）' : f.name;
+          return `<div class="facility-item" data-lat="${f.lat}" data-lng="${f.lng}">
+            <div class="facility-icon">${iconSvg}</div>
+            <div class="facility-info">
+              <div class="facility-name">${label}</div>
+              <div class="facility-meta">約 ${f.distance.toFixed(2)} km</div>
             </div>
-          `;
+          </div>`;
+        }).join('');
 
-          L.marker([lat, lng]).addTo(map).bindPopup(popupContent);
-        }
+        listEl.querySelectorAll('.facility-item').forEach(item => {
+          item.addEventListener('click', () => {
+            const lat = parseFloat(item.dataset.lat);
+            const lng = parseFloat(item.dataset.lng);
+            map.panTo([lat, lng]);
+          });
+        });
+      }
+
+      panel.classList.add('open');
+    }
+
+    async function loadFacilities() {
+      try {
+        const response = await fetch('data/hamamatsu/kodoken/facilities.json');
+        if (!response.ok) throw new Error('データの取得中にエラーが発生しました');
+        const data = await response.json();
+        if (!Array.isArray(data)) throw new Error('施設データの形式が正しくありません');
+        facilitiesData = data;
+
+        data.forEach(f => {
+          if (!f.lat || !f.lng || !f.type) return;
+          const icon = (f.type === 'school' || f.type === 'nursery') ? schoolIcon : parkIcon;
+          const label = f.type === 'nursery' ? f.name + '（保育園・こども園）' : f.name;
+          L.marker([f.lat, f.lng], { icon: icon }).addTo(map).bindPopup(label);
+        });
       } catch (err) {
         console.error(err);
-        showError('避難所データの読み込みに失敗しました。');
+        showError('施設データの読み込みに失敗しました。');
       }
     }
 
-    async function loadRainData() {
-      try {
-        const response = await fetch('data/hamamatsu/rain_hamamatsu.csv');
-        if (!response.ok) {
-          throw new Error('雨量データの取得中にエラーが発生しました');
+    loadFacilities();
+
+    map.on('click', function(e) {
+      const lat = e.latlng.lat;
+      const lng = e.latlng.lng;
+
+      if (clickMarker) map.removeLayer(clickMarker);
+      if (clickCircle) map.removeLayer(clickCircle);
+
+      clickMarker = L.marker([lat, lng], { icon: houseIcon }).addTo(map).bindTooltip('この地点を診断中', { permanent: true, direction: 'top', offset: [0, -30] });
+      clickCircle = L.circle([lat, lng], {
+        radius: 1000,
+        color: '#ff9800',
+        fillColor: '#ff9800',
+        fillOpacity: 0.15,
+        weight: 2
+      }).addTo(map);
+
+      const results = [];
+      facilitiesData.forEach(f => {
+        const d = getDistance(lat, lng, f.lat, f.lng);
+        if (d <= 1.0) {
+          results.push({ ...f, distance: d });
         }
-        const text = await response.text();
-        const lines = text.split('\n').filter(line => line.trim() !== '');
-        if (lines.length < 2) {
-          throw new Error('雨量データが見つかりませんでした');
-        }
+      });
+      results.sort((a, b) => a.distance - b.distance);
 
-        // CSSクラス名と対応する色
-        const classThresholds = [
-          { max: 0, cls: 'precip-0', color: '#81d4fa' },       // 0 mm
-          { max: 10, cls: 'precip-low', color: '#42a5f5' },    // 弱雨
-          { max: 30, cls: 'precip-mid', color: '#fdd835' },    // 中雨
-          { max: 50, cls: 'precip-high', color: '#fb8c00' },   // 強雨
-          { max: Infinity, cls: 'precip-extreme', color: '#e53935' } // 非常に強い雨
-        ];
+      renderPanel(results);
+    });
 
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(',');
-          if (cols.length < 7) continue;
-
-          const name = cols[1].trim();
-          const lat = parseFloat(cols[2].trim());
-          const lng = parseFloat(cols[3].trim());
-          const precip10mRaw = cols[5].trim();
-          const precip60mRaw = cols[6].trim();
-
-          if (isNaN(lat) || isNaN(lng)) continue;
-
-          const precip10m = precip10mRaw === '' ? null : parseFloat(precip10mRaw);
-          const precip60m = precip60mRaw === '' ? null : parseFloat(precip60mRaw);
-
-          // 欠損値の場合は灰色で表示
-          let color = '#9e9e9e';
-          let radius = 10;
-          let cls = '';
-
-          if (precip10m !== null) {
-            const t = classThresholds.find(t => precip10m <= t.max) || classThresholds[classThresholds.length - 1];
-            color = t.color;
-            cls = t.cls;
-            if (precip10m === 0) {
-              radius = 10;
-            } else if (precip10m < 10) {
-              radius = 16;
-            } else if (precip10m < 30) {
-              radius = 20;
-            } else if (precip10m < 50) {
-              radius = 24;
-            } else {
-              radius = 28;
-            }
-          }
-
-          const valueText10 = precip10m !== null ? precip10m + ' mm' : 'データなし';
-          const valueText60 = precip60m !== null ? precip60m + ' mm' : 'データなし';
-
-          const popupContent = `
-            <div class="precipitation-container" style="font-family: sans-serif; line-height: 1.5; min-width: 170px;">
-              <div style="font-size:15px;font-weight:bold;color:#1a237e;margin-bottom:6px;">${name}</div>
-              <div style="margin-bottom:2px;">10分雨量: <span class="precip-value ${cls}">${valueText10}</span></div>
-              <div>60分雨量: <span class="precip-value ${cls}">${valueText60}</span></div>
-            </div>
-          `;
-
-          L.circleMarker([lat, lng], {
-            radius: radius,
-            color: '#ffffff',
-            fillColor: color,
-            fillOpacity: 0.85,
-            weight: 2
-          }).addTo(map).bindPopup(popupContent);
-        }
-      } catch (err) {
-        console.error(err);
-        showError('雨量データの読み込みに失敗しました。');
-      }
-    }
-
-    loadShelters();
-    loadRainData();
+    window.addEventListener('error', function(e) {
+      showError('エラーが発生しました: ' + e.message);
+    });
   </script>
 </body>
 </html>
